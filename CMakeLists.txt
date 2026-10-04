@@ -67,3 +67,29 @@ if (ARPFORGE_TESTS)
     enable_testing()
     add_test (NAME EngineTests COMMAND EngineTests)
 endif()
+
+option (ARPFORGE_TOOLS "Build developer tools (UI snapshot renderer)" ON)
+
+if (ARPFORGE_TOOLS)
+    juce_add_console_app (UiSnapshot PRODUCT_NAME "UiSnapshot")
+    target_sources (UiSnapshot PRIVATE
+        tools/UiSnapshot.cpp
+        src/engine/ArpEngine.cpp
+        src/engine/Patterns.cpp
+        src/Parameters.cpp
+        src/PluginProcessor.cpp
+        src/PluginEditor.cpp
+        src/ui/Controls.cpp
+        src/ui/ForgeLookAndFeel.cpp
+        src/ui/PatternView.cpp
+        src/ui/Theme.cpp)
+    target_compile_definitions (UiSnapshot PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_MODAL_LOOPS_PERMITTED=1
+        JucePlugin_Name="ArpForge")
+    target_link_libraries (UiSnapshot PRIVATE
+        ArpForgeData
+        juce::juce_audio_utils
+        juce::juce_recommended_config_flags)
+endif()

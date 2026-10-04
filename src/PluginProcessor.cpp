@@ -67,9 +67,9 @@ void ArpForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     engine.setParams (readParams());
 
     arp::Transport transport;
-    if (auto* playHead = getPlayHead())
+    if (auto* host = getPlayHead())
     {
-        if (const auto position = playHead->getPosition())
+        if (const auto position = host->getPosition())
         {
             if (const auto bpm = position->getBpm())
                 transport.bpm = *bpm;

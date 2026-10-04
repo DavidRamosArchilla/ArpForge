@@ -74,7 +74,7 @@ void Segmented::paint (juce::Graphics& g)
     g.fillRoundedRectangle (b, corner);
 
     const float w = b.getWidth() / (float) labels.size();
-    g.setFont (caps (10.0f));
+    g.setFont (font (12.0f, Weight::medium));
 
     for (int i = 0; i < labels.size(); ++i)
     {

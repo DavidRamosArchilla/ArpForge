@@ -33,7 +33,7 @@ echo "==> Mirroring source to $mirror"
 mkdir -p "$mirror"
 rsync -a --delete \
     --exclude '/build/' --exclude '.git/' --exclude 'tests/engine_tests' \
-    "$repo/CMakeLists.txt" "$repo/src" "$repo/resources" "$repo/tests" "$repo/libs" \
+    "$repo/CMakeLists.txt" "$repo/src" "$repo/resources" "$repo/tests" "$repo/tools" "$repo/libs" \
     "$mirror/"
 
 cd "$mirror"
