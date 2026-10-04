@@ -16,6 +16,17 @@ namespace
     // When the arp starts and a grid line is this close (as a fraction of a
     // step), wait for it instead of playing the first note straight away.
     constexpr double startWindow = 0.125;
+
+    // Hosts (FL Studio especially) report a slightly jittery song position, so
+    // the arp runs on its own clock and only uses the host to stay aligned:
+    //  - an error above bigJump is a real jump (loop, playhead moved): realign now;
+    //  - an error above smallJump that lasts confirmBlocks blocks is a real small jump;
+    //  - anything else is jitter: averaged in slowly.
+    constexpr double bigJump = 0.25;          // beats
+    constexpr double smallJump = 0.02;        // beats
+    constexpr int confirmBlocks = 8;
+    constexpr double driftCorrection = 0.002; // fraction of the error corrected per block
+    constexpr int settleBlocks = 32;          // after a jump, average this many readings
 } // namespace
 
 Engine::Engine() : rng (std::random_device {}()) {}
@@ -76,14 +87,44 @@ void Engine::process (const Transport& transport, int numSamples,
     blockStartBeat = engineBeat;
     blockStartSeconds = engineSeconds;
 
+    const bool hadHostGrid = hostGrid;
     hostGrid = transport.playing && transport.hasPosition;
-    if (hostGrid)
-        gridOffset = transport.ppqPosition - engineBeat;
+    bool jumped = false;
 
-    // Re-derive the next grid step from the song position every block, which
-    // absorbs loops, jumps, tempo changes and rate changes.
+    if (hostGrid)
+    {
+        const double measured = transport.ppqPosition - engineBeat;
+        const double error = measured - gridOffset;
+
+        blocksOffGrid = std::abs (error) > smallJump ? blocksOffGrid + 1 : 0;
+
+        if (! hadHostGrid || std::abs (error) > bigJump || blocksOffGrid >= confirmBlocks)
+        {
+            gridOffset = measured;
+            jumped = true;
+            blocksSinceJump = 0;
+            blocksOffGrid = 0;
+        }
+        else
+        {
+            // Right after a jump, a running average of the readings; then a slow follow.
+            ++blocksSinceJump;
+            const double weight = blocksSinceJump < settleBlocks ? 1.0 / (blocksSinceJump + 1) : driftCorrection;
+            gridOffset += error * weight;
+        }
+    }
+
+    // Find the next grid step from the song position. Never go back to a step
+    // that already played unless the song position really jumped.
     if (running && params.sync)
-        scheduleGridStep (firstGridIndexAtOrAfter (hostPosAt (0) - gridEpsilon));
+    {
+        const double here = hostPosAt (0);
+
+        if (jumped)
+            nextStepNotBefore = here - gridEpsilon;
+
+        scheduleGridStep (firstGridIndexAtOrAfter (std::max (here - bigJump, nextStepNotBefore)));
+    }
 
     size_t next = 0;
     int cursor = 0;
@@ -290,6 +331,7 @@ void Engine::start (int sample)
         if (warp ((double) k * len) - here <= startWindow * len)
         {
             immediateStep = false;
+            nextStepNotBefore = here - gridEpsilon;
             scheduleGridStep (k);
             return;
         }
@@ -398,13 +440,20 @@ void Engine::fireStep (int sample, std::vector<NoteEvent>& out)
         }
     }
 
-    // Schedule the next step.
+    // Schedule the next step. Grid steps are at least half a step apart even
+    // with full swing, so a quarter step past this one excludes it for good.
     if (params.sync)
     {
         if (immediateStep)
-            scheduleGridStep (firstGridIndexAtOrAfter (hostPosAt (sample) + gridEpsilon));
+        {
+            nextStepNotBefore = hostPosAt (sample) + gridEpsilon;
+            scheduleGridStep (firstGridIndexAtOrAfter (nextStepNotBefore));
+        }
         else
+        {
+            nextStepNotBefore = warp ((double) nextGridIndex * len) + 0.25 * len;
             scheduleGridStep (nextGridIndex + 1);
+        }
     }
     else
     {

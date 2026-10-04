@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <functional>
 #include <map>
+#include <random>
 #include <set>
 #include <string>
 #include <vector>
@@ -60,6 +61,14 @@ struct Harness
     bool playing = true;
     double bpm = 120.0;
     double ppqBase = 0.0;    // host position = ppqBase + now / samplesPerBeat
+
+    // Host imperfections, like FL Studio's: variable block sizes, a jittery
+    // song position, and blocks that repeat the previous block's position.
+    bool randomBlocks = false;
+    double ppqJitter = 0.0;   // +/- beats
+    double staleChance = 0.0;
+    std::mt19937 hostRng { 1234 };
+    double lastReported = 0.0;
     std::multimap<long, arp::NoteEvent> pending;
     std::vector<Out> out;
 
@@ -80,7 +89,8 @@ struct Harness
 
         while (now < until)
         {
-            const int len = (int) std::min<long> (blockSize, until - now);
+            const int size = randomBlocks ? std::uniform_int_distribution<int> (1, 1024) (hostRng) : blockSize;
+            const int len = (int) std::min<long> (size, until - now);
             in.clear();
             generated.clear();
 
@@ -95,7 +105,13 @@ struct Harness
             transport.bpm = bpm;
             transport.playing = playing;
             transport.hasPosition = true;
-            transport.ppqPosition = ppqBase + (double) now * bpm / 60.0 / sr;
+            double reported = ppqBase + (double) now * bpm / 60.0 / sr;
+            if (ppqJitter > 0.0)
+                reported += std::uniform_real_distribution<double> (-ppqJitter, ppqJitter) (hostRng);
+            if (staleChance > 0.0 && std::uniform_real_distribution<double> (0.0, 1.0) (hostRng) < staleChance)
+                reported = lastReported;
+            lastReported = reported;
+            transport.ppqPosition = reported;
 
             engine.process (transport, len, in, generated);
 
@@ -641,6 +657,71 @@ const std::vector<Test> tests = {
         h.run (3 * sixteenth - 1);
         CHECK_EQ_VEC (h.onNotes(), (std::vector<int> { 48, 60, 64, 67 }));
         CHECK_EQ_VEC (h.onTimes(), (std::vector<long> { 0, 2 * sixteenth, 2 * sixteenth, 2 * sixteenth }));
+    } },
+
+    { "steady steps with a jittery host position", []
+    {
+        for (double jitter : { 0.002, 0.01, 0.03 })
+        {
+            Harness h;
+            h.randomBlocks = true;
+            h.ppqJitter = jitter;
+            h.staleChance = 0.2;
+            h.chord (0, { 60, 64, 67 });
+            h.run (beat * 16);
+
+            const auto t = h.onTimes();
+            CHECK (t.size() == 64);
+            // The clock settles on the host position within the first beat
+            // (within 5 ms), then every step is exact to 1 ms.
+            int irregular = 0;
+            for (size_t i = 1; i < t.size(); ++i)
+            {
+                const long error = std::abs ((t[i] - t[i - 1]) - sixteenth);
+                if (error > (i <= 4 ? 240 : 48))
+                {
+                    ++irregular;
+                    std::printf ("    jitter %.3f: step %zu interval %ld\n", jitter, i, t[i] - t[i - 1]);
+                }
+            }
+            CHECK (irregular == 0);
+
+            // Every note keeps the same length.
+            std::vector<long> lengths;
+            std::map<int, long> started;
+            for (const auto& o : h.out)
+            {
+                if (o.on)
+                    started[o.note] = o.time;
+                else
+                    lengths.push_back (o.time - started[o.note]);
+            }
+            const auto [lo, hi] = std::minmax_element (lengths.begin(), lengths.end());
+            CHECK (*hi - *lo <= 96);
+        }
+    } },
+
+    { "a real jump in the song position still realigns", []
+    {
+        Harness h;
+        h.randomBlocks = true;
+        h.ppqJitter = 0.01;
+        h.params.hold = true;
+        h.apply();
+        h.chord (0, { 60 });
+        h.off (10, 60);
+        h.run (beat * 2);
+        h.ppqBase = 0.1 - 2.0;   // loop back to ppq 0.1
+        const long jumpAt = h.now;
+        h.run (beat * 3);
+        std::vector<long> after;
+        for (auto t : h.onTimes())
+            if (t >= jumpAt)
+                after.push_back (t - jumpAt);
+        CHECK (after.size() >= 3);
+        // Grid lines after ppq 0.1 are at 0.25, 0.5 ... => 0.15, 0.40 beats later.
+        CHECK (after.size() >= 2 && std::abs (after[0] - (long) (0.15 * beat)) < 300);
+        CHECK (after.size() >= 2 && std::abs (after[1] - (long) (0.40 * beat)) < 300);
     } },
 
     { "release all closes sounding notes", []

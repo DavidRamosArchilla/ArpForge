@@ -84,6 +84,9 @@ private:
     double beatsPerSample = 0.0;
     double gridOffset = 0.0;          // host position = engine beat + gridOffset
     bool hostGrid = false;
+    double nextStepNotBefore = 0.0;   // host position the next grid step must not precede
+    int blocksSinceJump = 0;
+    int blocksOffGrid = 0;
 
     // Notes
     std::vector<HeldNote> physical;   // keys currently down
