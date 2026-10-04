@@ -1,6 +1,8 @@
 cmake_minimum_required (VERSION 3.22)
 
-project (ArpForge VERSION 0.1.0 LANGUAGES C CXX)
+# CI passes the version from the git tag (v1.2.3 -> 1.2.3).
+set (ARPFORGE_VERSION "0.1.0" CACHE STRING "Plugin version")
+project (ArpForge VERSION ${ARPFORGE_VERSION} LANGUAGES C CXX)
 
 set (CMAKE_CXX_STANDARD 20)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,6 +36,8 @@ juce_add_binary_data (ArpForgeData
         resources/fonts/Inter-SemiBold.ttf)
 
 target_sources (ArpForge PRIVATE
+    src/capture/CaptureTake.cpp
+    src/capture/MidiExport.cpp
     src/engine/ArpEngine.cpp
     src/engine/Patterns.cpp
     src/Parameters.cpp
@@ -42,6 +46,7 @@ target_sources (ArpForge PRIVATE
     src/PluginEditor.cpp
     src/ui/Controls.cpp
     src/ui/ForgeLookAndFeel.cpp
+    src/ui/MidiDragTile.cpp
     src/ui/PatternView.cpp
     src/ui/Theme.cpp)
 
@@ -64,7 +69,8 @@ if (ARPFORGE_TESTS)
     add_executable (EngineTests
         tests/EngineTests.cpp
         src/engine/ArpEngine.cpp
-        src/engine/Patterns.cpp)
+        src/engine/Patterns.cpp
+        src/capture/CaptureTake.cpp)
     enable_testing()
     add_test (NAME EngineTests COMMAND EngineTests)
 endif()
@@ -75,6 +81,8 @@ if (ARPFORGE_TOOLS)
     juce_add_console_app (UiSnapshot PRODUCT_NAME "UiSnapshot")
     target_sources (UiSnapshot PRIVATE
         tools/UiSnapshot.cpp
+        src/capture/CaptureTake.cpp
+        src/capture/MidiExport.cpp
         src/engine/ArpEngine.cpp
         src/engine/Patterns.cpp
         src/Parameters.cpp
@@ -83,6 +91,7 @@ if (ARPFORGE_TOOLS)
         src/PluginEditor.cpp
         src/ui/Controls.cpp
         src/ui/ForgeLookAndFeel.cpp
+        src/ui/MidiDragTile.cpp
         src/ui/PatternView.cpp
         src/ui/Theme.cpp)
     target_compile_definitions (UiSnapshot PRIVATE

@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 #include "ui/Controls.h"
 #include "ui/ForgeLookAndFeel.h"
+#include "ui/MidiDragTile.h"
 #include "ui/PatternView.h"
 
 class ArpForgeEditor final : public juce::AudioProcessorEditor, private juce::Timer
@@ -42,6 +43,7 @@ private:
         Selector style, presets;
         juce::ParameterAttachment styleAttachment;
         PatternView pattern;
+        MidiDragTile midiTile;
         Toggle hold, sync, velocityOn, velocityRetrig;
         Segmented groove, retrigger, transposeMode;
         Knob rate, freeRate, gate, swing;

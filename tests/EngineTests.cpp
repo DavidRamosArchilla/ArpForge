@@ -3,6 +3,7 @@
 #include "../src/engine/ArpEngine.h"
 #include "../src/engine/Patterns.h"
 #include "../src/engine/Scales.h"
+#include "../src/capture/CaptureTake.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -722,6 +723,78 @@ const std::vector<Test> tests = {
         // Grid lines after ppq 0.1 are at 0.25, 0.5 ... => 0.15, 0.40 beats later.
         CHECK (after.size() >= 2 && std::abs (after[0] - (long) (0.15 * beat)) < 300);
         CHECK (after.size() >= 2 && std::abs (after[1] - (long) (0.40 * beat)) < 300);
+    } },
+
+    { "capture: song takes are bar-aligned", []
+    {
+        using K = capture::CaptureTake::Kind;
+        capture::CaptureTake take;
+        take.add ({ K::TransportStart, 4.2, 0.0, true });
+        take.add ({ K::NoteOn,  4.5,  0.10, true, 1, 60, 100 });
+        take.add ({ K::NoteOff, 4.75, 0.20, true, 1, 60, 0 });
+        take.add ({ K::NoteOn,  5.0,  0.30, true, 1, 64, 90 });
+        take.add ({ K::NoteOff, 5.25, 0.40, true, 1, 64, 0 });
+        const auto notes = take.getNotes();
+        CHECK (notes.size() == 2);
+        CHECK (notes[0].start == 0.5 && notes[0].length == 0.25 && notes[0].note == 60);
+        CHECK (notes[1].start == 1.0 && notes[1].velocity == 90);
+        CHECK (take.isSongAligned());
+        CHECK (take.getLengthBeats() == 4.0);
+    } },
+
+    { "capture: stopping ends the take and ignores later note-offs", []
+    {
+        using K = capture::CaptureTake::Kind;
+        capture::CaptureTake take;
+        take.add ({ K::TransportStart, 0.0, 0.0, true });
+        take.add ({ K::NoteOn, 1.0, 0.5, true, 1, 60, 100 });
+        take.add ({ K::TransportStop, 1.5, 0.75, false });
+        take.add ({ K::NoteOff, 99.0, 0.8, false, 1, 60, 0 });
+        const auto notes = take.getNotes();
+        CHECK (notes.size() == 1 && notes[0].start == 1.0 && notes[0].length == 0.5);
+    } },
+
+    { "capture: pressing play again starts a new take", []
+    {
+        using K = capture::CaptureTake::Kind;
+        capture::CaptureTake take;
+        take.add ({ K::TransportStart, 0.0, 0.0, true });
+        take.add ({ K::NoteOn, 0.0, 0.0, true, 1, 60, 100 });
+        take.add ({ K::NoteOff, 0.5, 0.25, true, 1, 60, 0 });
+        take.add ({ K::TransportStop, 1.0, 0.5, false });
+        take.add ({ K::TransportStart, 8.0, 3.0, true });
+        CHECK (take.getNotes().size() == 1);   // kept until the next note arrives
+        take.add ({ K::NoteOn, 9.0, 3.5, true, 1, 67, 100 });
+        const auto notes = take.getNotes();
+        CHECK (notes.size() == 1 && notes[0].note == 67 && notes[0].start == 1.0);
+    } },
+
+    { "capture: live takes split on pauses", []
+    {
+        using K = capture::CaptureTake::Kind;
+        capture::CaptureTake take;
+        take.add ({ K::NoteOn,  10.0, 1.0, false, 1, 60, 100 });
+        take.add ({ K::NoteOff, 10.5, 1.2, false, 1, 60, 0 });
+        take.add ({ K::NoteOn,  11.0, 2.5, false, 1, 62, 100 });   // 1.3 s later: same take
+        take.add ({ K::NoteOff, 11.5, 2.7, false, 1, 62, 0 });
+        CHECK (take.getNotes().size() == 2);
+        CHECK (! take.isSongAligned() && take.getNotes()[1].start == 1.0);
+        take.add ({ K::NoteOn, 30.0, 6.0, false, 1, 64, 100 });    // 3.3 s later: new take
+        CHECK (take.getNotes().size() == 1 && take.getNotes()[0].start == 0.0);
+    } },
+
+    { "capture: held notes are cut at the last event, retriggers split", []
+    {
+        using K = capture::CaptureTake::Kind;
+        capture::CaptureTake take;
+        take.add ({ K::TransportStart, 0.0, 0.0, true });
+        take.add ({ K::NoteOn, 0.0, 0.0, true, 1, 60, 100 });
+        take.add ({ K::NoteOn, 1.0, 0.5, true, 1, 60, 100 });
+        take.add ({ K::NoteOn, 2.0, 1.0, true, 1, 64, 100 });
+        const auto notes = take.getNotes();
+        CHECK (notes.size() == 3);
+        CHECK (notes[0].length == 1.0);
+        CHECK (notes[1].start == 1.0 && notes[1].length == 1.0);
     } },
 
     { "release all closes sounding notes", []

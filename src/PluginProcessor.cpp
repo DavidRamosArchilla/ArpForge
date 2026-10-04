@@ -7,11 +7,18 @@ ArpForgeProcessor::ArpForgeProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       state (*this, nullptr, "ArpForge", params::createLayout())
 {
+    startTimerHz (20);
+}
+
+ArpForgeProcessor::~ArpForgeProcessor()
+{
+    stopTimer();
 }
 
 void ArpForgeProcessor::prepareToPlay (double sampleRate, int)
 {
-    engine.prepare (sampleRate);
+    currentSampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
+    engine.prepare (currentSampleRate);
     noteInput.reserve (1024);
     noteOutput.reserve (2048);
     outputBuffer.ensureSize (8192);
@@ -72,18 +79,36 @@ void ArpForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     {
         if (const auto position = host->getPosition())
         {
-            if (const auto bpm = position->getBpm())
+            if (const auto bpm = position->getBpm(); bpm.hasValue() && std::isfinite (*bpm) && *bpm > 1.0)
                 transport.bpm = *bpm;
 
-            if (const auto ppq = position->getPpqPosition())
+            if (const auto ppq = position->getPpqPosition(); ppq.hasValue() && std::isfinite (*ppq))
             {
                 transport.ppqPosition = *ppq;
                 transport.hasPosition = true;
             }
 
             transport.playing = position->getIsPlaying();
+
+            if (const auto sig = position->getTimeSignature())
+            {
+                timeSigNumerator = juce::jmax (1, sig->numerator);
+                timeSigDenominator = juce::jmax (1, sig->denominator);
+            }
         }
     }
+
+    // Capture clock: the song position while playing, a free-running one otherwise.
+    const double sampleRate = currentSampleRate;
+    hostBpm = transport.bpm;
+    blockBeatsPerSample = transport.bpm / 60.0 / sampleRate;
+    blockPlaying = transport.playing && transport.hasPosition;
+    blockBeat = blockPlaying ? transport.ppqPosition : liveBeat;
+    blockSeconds = liveSeconds;
+
+    if (blockPlaying != wasPlaying)
+        pushCapture (blockPlaying ? capture::CaptureTake::Kind::TransportStart : capture::CaptureTake::Kind::TransportStop, 0);
+    wasPlaying = blockPlaying;
 
     const int numSamples = buffer.getNumSamples();
     int segmentStart = 0;
@@ -123,6 +148,11 @@ void ArpForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     runEngine (transport, segmentStart, numSamples);
     midi.swapWith (outputBuffer);
 
+    liveBeat += numSamples * blockBeatsPerSample;
+    liveSeconds += numSamples / sampleRate;
+    if (blockPlaying)
+        lastSongBeat = blockBeat + numSamples * blockBeatsPerSample;
+
     const juce::SpinLock::ScopedTryLockType lock (snapshotLock);
     if (lock.isLocked())
         engine.fillSnapshot (snapshot);
@@ -135,7 +165,7 @@ void ArpForgeProcessor::runEngine (const arp::Transport& transport, int start, i
 
     auto segment = transport;
     if (segment.hasPosition)
-        segment.ppqPosition += start * segment.bpm / 60.0 / getSampleRate();
+        segment.ppqPosition += start * segment.bpm / 60.0 / currentSampleRate;
 
     noteOutput.clear();
     engine.process (segment, end - start, noteInput, noteOutput);
@@ -151,7 +181,38 @@ void ArpForgeProcessor::addToOutput (const std::vector<arp::NoteEvent>& events, 
         const auto msg = e.isNoteOn ? juce::MidiMessage::noteOn (channel, e.note, (juce::uint8) e.velocity)
                                     : juce::MidiMessage::noteOff (channel, e.note);
         outputBuffer.addEvent (msg, start + e.sampleOffset);
+        pushCapture (e.isNoteOn ? capture::CaptureTake::Kind::NoteOn : capture::CaptureTake::Kind::NoteOff,
+                     start + e.sampleOffset, channel, e.note, e.velocity);
     }
+}
+
+void ArpForgeProcessor::pushCapture (capture::CaptureTake::Kind kind, int sampleInBlock, int channel, int note, int velocity)
+{
+    capture::CaptureTake::Event e;
+    e.kind = kind;
+    e.playing = kind == capture::CaptureTake::Kind::TransportStop ? false : blockPlaying;
+    e.beat = kind == capture::CaptureTake::Kind::TransportStop ? lastSongBeat
+                                                                : blockBeat + sampleInBlock * blockBeatsPerSample;
+    e.seconds = blockSeconds + sampleInBlock / currentSampleRate;
+    e.channel = channel;
+    e.note = note;
+    e.velocity = velocity;
+
+    // A full queue drops the event rather than blocking the audio thread.
+    const auto scope = captureFifo.write (1);
+    if (scope.blockSize1 > 0)
+        captureQueue[(size_t) scope.startIndex1] = e;
+}
+
+void ArpForgeProcessor::timerCallback()
+{
+    take.setBeatsPerBar (getTimeSigNumerator() * 4.0 / getTimeSigDenominator());
+
+    const auto scope = captureFifo.read (captureFifo.getNumReady());
+    for (int i = 0; i < scope.blockSize1; ++i)
+        take.add (captureQueue[(size_t) (scope.startIndex1 + i)]);
+    for (int i = 0; i < scope.blockSize2; ++i)
+        take.add (captureQueue[(size_t) (scope.startIndex2 + i)]);
 }
 
 void ArpForgeProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)

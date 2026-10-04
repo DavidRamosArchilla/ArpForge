@@ -97,11 +97,12 @@ ArpForgeEditor::Content::Content (ArpForgeProcessor& p)
       steps (state, params::id::steps, "STEPS"),
       velocityDecay (state, params::id::velocityDecay, "DECAY"),
       velocityTarget (state, params::id::velocityTarget, "TARGET"),
+      midiTile (p),
       key (state, params::id::transposeKey),
       scale (state, params::id::transposeScale)
 {
     for (juce::Component* c : std::initializer_list<juce::Component*> {
-             &style, &presets, &pattern, &hold, &sync, &velocityOn, &velocityRetrig,
+             &style, &presets, &pattern, &midiTile, &hold, &sync, &velocityOn, &velocityRetrig,
              &groove, &retrigger, &transposeMode,
              &rate, &freeRate, &gate, &swing, &offset, &repeats, &retriggerRate,
              &distance, &steps, &velocityDecay, &velocityTarget, &key, &scale })
@@ -144,6 +145,7 @@ void ArpForgeEditor::Content::layout()
     const auto& pp = panels[0].bounds;
     style.setBounds (pp.getX() + 16, pp.getY() + 36, pp.getWidth() - 32, 34);
     pattern.setBounds (pp.getX() + 16, pp.getY() + 80, pp.getWidth() - 32, pp.getHeight() - 96);
+    midiTile.setBounds (pp.getRight() - 16 - 172, pp.getY() + 8, 172, 22);
 
     // Rhythm
     {
@@ -188,6 +190,7 @@ void ArpForgeEditor::Content::refresh()
     processor.copySnapshot (snapshot);
     pattern.update (snapshot);
     presets.setSelected (processor.getPresetIndex());
+    midiTile.refresh();
 
     // Show the controls that matter for the current settings.
     const bool synced = valueOf (state, params::id::sync) >= 0.5f;

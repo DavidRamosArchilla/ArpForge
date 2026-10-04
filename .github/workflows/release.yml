@@ -1,0 +1,59 @@
+# Builds the Windows VST3 and publishes a GitHub release for every version tag.
+#   git tag v0.1.0 && git push origin v0.1.0
+
+name: Release
+
+on:
+  push:
+    tags: [ "v*" ]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Version from tag
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DARPFORGE_VERSION=${{ env.VERSION }} -DARPFORGE_TOOLS=OFF
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: build\Release\EngineTests.exe
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $dir = "ArpForge-$env:VERSION-win64"
+          New-Item -ItemType Directory $dir | Out-Null
+          Copy-Item -Recurse build\ArpForge_artefacts\Release\VST3\ArpForge.vst3 $dir
+          Copy-Item LICENSE, README.md $dir
+          Compress-Archive -Path $dir -DestinationPath "$dir.zip"
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<NOTES
+          ## Install
+
+          1. Unzip and copy \`ArpForge.vst3\` to \`C:\\Program Files\\Common Files\\VST3\`.
+             If Windows blocks the download, right-click the zip → Properties → Unblock first.
+          2. In FL Studio: Options → Manage plugins → Find installed plugins.
+          3. Load ArpForge in the Channel Rack, set its MIDI output port, and set your
+             synth's MIDI input port to the same number. See the README for details.
+          NOTES
+          gh release create "$GITHUB_REF_NAME" "ArpForge-$VERSION-win64.zip" \
+            --title "ArpForge $VERSION" --notes-file notes.md --generate-notes
