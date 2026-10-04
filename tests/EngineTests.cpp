@@ -161,6 +161,15 @@ struct Harness
     }
 };
 
+// Pattern steps as note indices (-1 = whole chord) for compact checks.
+std::vector<int> order (arp::Style style, int n)
+{
+    std::vector<int> v;
+    for (const auto& s : arp::buildPattern (style, n))
+        v.push_back (s.kind == arp::Step::Kind::Chord ? -1 : s.index);
+    return v;
+}
+
 std::vector<int> first (std::vector<int> v, size_t n)
 {
     v.resize (std::min (v.size(), n));
@@ -174,20 +183,20 @@ const std::vector<Test> tests = {
     { "patterns for four notes", []
     {
         using S = arp::Style;
-        CHECK_EQ_VEC (arp::buildPattern (S::Up, 4),            (std::vector<int> { 0, 1, 2, 3 }));
-        CHECK_EQ_VEC (arp::buildPattern (S::Down, 4),          (std::vector<int> { 3, 2, 1, 0 }));
-        CHECK_EQ_VEC (arp::buildPattern (S::UpDown, 4),        (std::vector<int> { 0, 1, 2, 3, 2, 1 }));
-        CHECK_EQ_VEC (arp::buildPattern (S::DownUp, 4),        (std::vector<int> { 3, 2, 1, 0, 1, 2 }));
-        CHECK_EQ_VEC (arp::buildPattern (S::UpAndDown, 4),     (std::vector<int> { 0, 1, 2, 3, 3, 2, 1, 0 }));
-        CHECK_EQ_VEC (arp::buildPattern (S::DownAndUp, 4),     (std::vector<int> { 3, 2, 1, 0, 0, 1, 2, 3 }));
-        CHECK_EQ_VEC (arp::buildPattern (S::Converge, 4),      (std::vector<int> { 0, 3, 1, 2 }));
-        CHECK_EQ_VEC (arp::buildPattern (S::Diverge, 4),       (std::vector<int> { 2, 1, 3, 0 }));
-        CHECK_EQ_VEC (arp::buildPattern (S::ConAndDiverge, 4), (std::vector<int> { 0, 3, 1, 2, 1, 3 }));
-        CHECK_EQ_VEC (arp::buildPattern (S::PinkyUp, 4),       (std::vector<int> { 0, 3, 1, 3, 2, 3 }));
-        CHECK_EQ_VEC (arp::buildPattern (S::PinkyUpDown, 4),   (std::vector<int> { 0, 3, 1, 3, 2, 3, 1, 3 }));
-        CHECK_EQ_VEC (arp::buildPattern (S::ThumbUp, 4),       (std::vector<int> { 0, 1, 0, 2, 0, 3 }));
-        CHECK_EQ_VEC (arp::buildPattern (S::ThumbUpDown, 4),   (std::vector<int> { 0, 1, 0, 2, 0, 3, 0, 2 }));
-        CHECK_EQ_VEC (arp::buildPattern (S::ChordTrigger, 4),  (std::vector<int> { arp::chordStep }));
+        CHECK_EQ_VEC (order (S::Up, 4),            (std::vector<int> { 0, 1, 2, 3 }));
+        CHECK_EQ_VEC (order (S::Down, 4),          (std::vector<int> { 3, 2, 1, 0 }));
+        CHECK_EQ_VEC (order (S::UpDown, 4),        (std::vector<int> { 0, 1, 2, 3, 2, 1 }));
+        CHECK_EQ_VEC (order (S::DownUp, 4),        (std::vector<int> { 3, 2, 1, 0, 1, 2 }));
+        CHECK_EQ_VEC (order (S::UpAndDown, 4),     (std::vector<int> { 0, 1, 2, 3, 3, 2, 1, 0 }));
+        CHECK_EQ_VEC (order (S::DownAndUp, 4),     (std::vector<int> { 3, 2, 1, 0, 0, 1, 2, 3 }));
+        CHECK_EQ_VEC (order (S::Converge, 4),      (std::vector<int> { 0, 3, 1, 2 }));
+        CHECK_EQ_VEC (order (S::Diverge, 4),       (std::vector<int> { 2, 1, 3, 0 }));
+        CHECK_EQ_VEC (order (S::ConAndDiverge, 4), (std::vector<int> { 0, 3, 1, 2, 1, 3 }));
+        CHECK_EQ_VEC (order (S::PinkyUp, 4),       (std::vector<int> { 0, 3, 1, 3, 2, 3 }));
+        CHECK_EQ_VEC (order (S::PinkyUpDown, 4),   (std::vector<int> { 0, 3, 1, 3, 2, 3, 1, 3 }));
+        CHECK_EQ_VEC (order (S::ThumbUp, 4),       (std::vector<int> { 0, 1, 0, 2, 0, 3 }));
+        CHECK_EQ_VEC (order (S::ThumbUpDown, 4),   (std::vector<int> { 0, 1, 0, 2, 0, 3, 0, 2 }));
+        CHECK_EQ_VEC (order (S::ChordTrigger, 4),  (std::vector<int> { -1 }));
     } },
 
     { "patterns with one and two notes", []
@@ -195,14 +204,42 @@ const std::vector<Test> tests = {
         for (int s = 0; s < arp::numStyles; ++s)
         {
             const auto style = (arp::Style) s;
-            const auto one = arp::buildPattern (style, 1);
-            CHECK (one.size() == 1);
-            const auto two = arp::buildPattern (style, 2);
-            CHECK (! two.empty());
-            for (int v : two)
-                CHECK (v == arp::chordStep || (v >= 0 && v < 2));
+            CHECK (! arp::buildPattern (style, 1).empty());
+            CHECK (! arp::buildPattern (style, 2).empty());
+            if (! arp::isWrittenPattern (style))
+            {
+                CHECK (arp::buildPattern (style, 1).size() == 1);
+                for (int v : order (style, 2))
+                    CHECK (v == -1 || (v >= 0 && v < 2));
+            }
         }
         CHECK (arp::buildPattern (arp::Style::Up, 0).empty());
+    } },
+
+    { "pattern notation: notes, octaves, ties, rests, accents", []
+    {
+        using K = arp::Step::Kind;
+        const auto s = arp::parsePattern ("0! 2' - . C - - B, U? T . - 1");
+        CHECK (s.size() == 13);
+        CHECK ((s[0] == arp::Step { K::Note, 0, 0, 1, arp::accentVelocity }));
+        CHECK ((s[1] == arp::Step { K::Note, 2, 1, 2, arp::normalVelocity }));
+        CHECK (s[2].kind == K::Rest && s[3].kind == K::Rest);
+        CHECK (s[4].kind == K::Chord && s[4].length == 3);
+        CHECK ((s[7] == arp::Step { K::Bass, 0, -1, 1, arp::normalVelocity }));
+        CHECK (s[8].kind == K::Upper && s[8].velocity == arp::ghostVelocity);
+        CHECK (s[9].kind == K::Top);
+        CHECK (s[11].kind == K::Rest);   // a tie after a rest stays a rest
+        CHECK (s[12].kind == K::Note && s[12].index == 1);
+    } },
+
+    { "every written pattern parses to whole beats", []
+    {
+        for (int i = (int) arp::Style::Gallop; i < arp::numStyles; ++i)
+        {
+            const auto steps = arp::buildPattern ((arp::Style) i, 3);
+            CHECK (steps.size() >= 4 && steps.size() % 4 == 0);
+            CHECK (steps.front().velocity == arp::accentVelocity || steps.front().kind == arp::Step::Kind::Rest);
+        }
     } },
 
     { "up at 1/16 lands exactly on the grid", []
@@ -537,6 +574,73 @@ const std::vector<Test> tests = {
         h.run (2 * beat - 1);
         const auto t = h.onTimes();
         CHECK_EQ_VEC (std::vector<long> (t.begin() + 4, t.end()), (std::vector<long> { 24000, 36000 }));
+    } },
+
+    { "chord rhythm plays stabs on its steps only", []
+    {
+        Harness h;
+        h.params.style = arp::Style::OffbeatStabs;
+        h.apply();
+        h.chord (0, { 60, 64, 67 });
+        h.run (beat * 4 - 1);
+        auto t = h.onTimes();
+        t.erase (std::unique (t.begin(), t.end()), t.end());
+        CHECK_EQ_VEC (t, (std::vector<long> { 2 * sixteenth, 6 * sixteenth, 10 * sixteenth, 14 * sixteenth }));
+        CHECK (h.onNotes().size() == 12);
+        CHECK (h.balanced());
+    } },
+
+    { "ties make notes longer", []
+    {
+        Harness h;
+        h.params.style = arp::Style::Ballad;   // "B! - - - U - U - ..."
+        h.params.gate = 1.0;
+        h.apply();
+        h.chord (0, { 48, 60, 64 });
+        h.run (beat * 2);
+        CHECK (h.out[0].on && h.out[0].note == 48 && h.out[0].time == 0);
+        // The bass lasts four steps, the first upper chord two.
+        long bassOff = -1;
+        for (const auto& o : h.out)
+            if (! o.on && o.note == 48 && bassOff < 0)
+                bassOff = o.time;
+        CHECK (bassOff == 4 * sixteenth);
+        CHECK_EQ_VEC (first (h.onNotes(), 5), (std::vector<int> { 48, 60, 64, 60, 64 }));
+    } },
+
+    { "accents and ghost notes scale the velocity", []
+    {
+        Harness h;
+        h.params.style = arp::Style::PulseAccents;   // "C! . C? . C ..."
+        h.apply();
+        h.on (0, 60, 100);
+        h.run (5 * sixteenth - 1);
+        std::vector<int> v;
+        for (const auto& o : h.out)
+            if (o.on)
+                v.push_back (o.velocity);
+        CHECK_EQ_VEC (v, (std::vector<int> { 100, 55, 85 }));
+    } },
+
+    { "pattern indices wrap into higher octaves", []
+    {
+        Harness h;
+        h.params.style = arp::Style::OctaveBounce;   // "0! 0' 1 1' 2 2' 1 1'"
+        h.apply();
+        h.chord (0, { 60, 67 });
+        h.run (8 * sixteenth - 1);
+        CHECK_EQ_VEC (h.onNotes(), (std::vector<int> { 60, 72, 67, 79, 72, 84, 67, 79 }));
+    } },
+
+    { "bass and upper split the chord", []
+    {
+        Harness h;
+        h.params.style = arp::Style::PianoComp;   // "B! - U . U ..."
+        h.apply();
+        h.chord (0, { 48, 60, 64, 67 });
+        h.run (3 * sixteenth - 1);
+        CHECK_EQ_VEC (h.onNotes(), (std::vector<int> { 48, 60, 64, 67 }));
+        CHECK_EQ_VEC (h.onTimes(), (std::vector<long> { 0, 2 * sixteenth, 2 * sixteenth, 2 * sixteenth }));
     } },
 
     { "release all closes sounding notes", []

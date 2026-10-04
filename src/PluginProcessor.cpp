@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "Parameters.h"
+#include "Presets.h"
 
 ArpForgeProcessor::ArpForgeProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
@@ -168,6 +169,21 @@ void ArpForgeProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, 
         for (const auto& e : noteOutput)
             midi.addEvent (juce::MidiMessage::noteOff (juce::jlimit (1, 16, e.channel), e.note), 0);
     }
+}
+
+void ArpForgeProcessor::loadPreset (int index)
+{
+    const auto& list = presets::all();
+    if (index < 0 || index >= (int) list.size())
+        return;
+
+    presets::apply (state, list[(size_t) index]);
+    state.state.setProperty ("preset", index, nullptr);
+}
+
+int ArpForgeProcessor::getPresetIndex() const
+{
+    return state.state.getProperty ("preset", 0);
 }
 
 void ArpForgeProcessor::copySnapshot (arp::Snapshot& dest)

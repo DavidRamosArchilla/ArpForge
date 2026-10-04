@@ -25,6 +25,7 @@ public:
                             const juce::String& shortcutKeyText, const juce::Drawable* icon,
                             const juce::Colour* textColour) override;
     juce::Font getPopupMenuFont() override;
+    void drawPopupMenuSectionHeader (juce::Graphics&, const juce::Rectangle<int>& area, const juce::String& name) override;
     void getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator, int standardHeight,
                                     int& idealWidth, int& idealHeight) override;
     int getPopupMenuBorderSize() override { return 5; }

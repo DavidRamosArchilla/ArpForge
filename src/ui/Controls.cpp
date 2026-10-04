@@ -133,19 +133,26 @@ Choice::Choice (APVTS& state, const juce::String& paramId)
 }
 
 //==============================================================================
-StyleSelector::StyleSelector (juce::RangedAudioParameter& param, juce::StringArray styleNames)
-    : names (std::move (styleNames)),
-      attachment (param, [this] (float v)
-                  {
-                      selected = juce::jlimit (0, names.size() - 1, juce::roundToInt (v));
-                      repaint();
-                  })
+Selector::Selector (juce::StringArray itemNames, std::vector<Section> menuSections, float nameHeight, bool withCount)
+    : names (std::move (itemNames)),
+      sections (std::move (menuSections)),
+      textHeight (nameHeight),
+      showCount (withCount)
 {
     setMouseCursor (juce::MouseCursor::PointingHandCursor);
-    attachment.sendInitialUpdate();
 }
 
-StyleSelector::Zone StyleSelector::zoneAt (juce::Point<int> p) const
+void Selector::setSelected (int index)
+{
+    index = juce::jlimit (0, juce::jmax (0, names.size() - 1), index);
+    if (index != selected)
+    {
+        selected = index;
+        repaint();
+    }
+}
+
+Selector::Zone Selector::zoneAt (juce::Point<int> p) const
 {
     if (! getLocalBounds().contains (p))
         return Zone::none;
@@ -158,17 +165,22 @@ StyleSelector::Zone StyleSelector::zoneAt (juce::Point<int> p) const
     return Zone::name;
 }
 
-void StyleSelector::select (int index)
+void Selector::pick (int index)
 {
     const int n = names.size();
-    attachment.setValueAsCompleteGesture ((float) (((index % n) + n) % n));
+    index = ((index % n) + n) % n;
+    setSelected (index);
+
+    if (onSelect)
+        onSelect (index);
 }
 
-void StyleSelector::paint (juce::Graphics& g)
+void Selector::paint (juce::Graphics& g)
 {
     const auto b = getLocalBounds().toFloat();
+    const float corner = juce::jmin (8.0f, b.getHeight() * 0.5f);
     g.setColour (hovered == Zone::name ? colour::trackHover : colour::track);
-    g.fillRoundedRectangle (b, 8.0f);
+    g.fillRoundedRectangle (b, corner);
 
     const float arrowWidth = b.getHeight();
 
@@ -177,11 +189,11 @@ void StyleSelector::paint (juce::Graphics& g)
         if (hot)
         {
             g.setColour (colour::trackHover.brighter (0.08f));
-            g.fillRoundedRectangle (area.reduced (3.0f), 6.0f);
+            g.fillRoundedRectangle (area.reduced (3.0f), corner - 2.0f);
         }
 
         const auto c = area.getCentre();
-        const float s = 4.5f, dir = pointsLeft ? 1.0f : -1.0f;
+        const float s = juce::jmin (4.5f, area.getHeight() * 0.15f), dir = pointsLeft ? 1.0f : -1.0f;
         juce::Path p;
         p.startNewSubPath (c.x + s * 0.5f * dir, c.y - s);
         p.lineTo (c.x - s * 0.5f * dir, c.y);
@@ -194,52 +206,60 @@ void StyleSelector::paint (juce::Graphics& g)
     drawChevron (b.withLeft (b.getRight() - arrowWidth), false, hovered == Zone::next);
 
     g.setColour (colour::text);
-    g.setFont (font (16.0f, Weight::semibold));
-    g.drawText (names[selected], b.reduced (arrowWidth, 0.0f), juce::Justification::centred, false);
+    g.setFont (font (textHeight, Weight::semibold));
+    g.drawFittedText (names[selected], b.reduced (arrowWidth, 0.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
 
-    g.setColour (colour::textFaint);
-    g.setFont (font (11.0f, Weight::medium));
-    g.drawText (juce::String (selected + 1) + " / " + juce::String (names.size()),
-                b.reduced (arrowWidth + 6.0f, 0.0f), juce::Justification::centredRight, false);
-}
-
-void StyleSelector::mouseDown (const juce::MouseEvent& e)
-{
-    switch (zoneAt (e.getPosition()))
+    if (showCount)
     {
-        case Zone::previous: select (selected - 1); break;
-        case Zone::next:     select (selected + 1); break;
-        case Zone::none:     break;
-
-        case Zone::name:
-        {
-            juce::PopupMenu menu;
-            // Same grouping as the list of styles: directional, inside-out,
-            // finger patterns, order based, random.
-            const std::array<int, 4> groupEnds { 5, 8, 12, 14 };
-
-            for (int i = 0; i < names.size(); ++i)
-            {
-                menu.addItem (i + 1, names[i], true, i == selected);
-                if (std::find (groupEnds.begin(), groupEnds.end(), i) != groupEnds.end())
-                    menu.addSeparator();
-            }
-
-            juce::Component::SafePointer<StyleSelector> safeThis (this);
-            menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this)
-                                                          .withMinimumWidth (getWidth())
-                                                          .withStandardItemHeight (26),
-                                [safeThis] (int result)
-                                {
-                                    if (safeThis != nullptr && result > 0)
-                                        safeThis->select (result - 1);
-                                });
-            break;
-        }
+        g.setColour (colour::textFaint);
+        g.setFont (font (11.0f, Weight::medium));
+        g.drawText (juce::String (selected + 1) + " / " + juce::String (names.size()),
+                    b.reduced (arrowWidth + 6.0f, 0.0f), juce::Justification::centredRight, false);
     }
 }
 
-void StyleSelector::mouseMove (const juce::MouseEvent& e)
+void Selector::showMenu()
+{
+    juce::PopupMenu menu;
+
+    for (size_t s = 0; s < sections.size(); ++s)
+    {
+        const auto& section = sections[s];
+        if (s > 0)
+            menu.addColumnBreak();
+
+        menu.addSectionHeader (section.title);
+
+        for (int i = section.first; i <= section.last && i < names.size(); ++i)
+        {
+            menu.addItem (i + 1, names[i], true, i == selected);
+            if (std::find (section.separatorsAfter.begin(), section.separatorsAfter.end(), i) != section.separatorsAfter.end())
+                menu.addSeparator();
+        }
+    }
+
+    juce::Component::SafePointer<Selector> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this)
+                                                  .withStandardItemHeight (26),
+                        [safeThis] (int result)
+                        {
+                            if (safeThis != nullptr && result > 0)
+                                safeThis->pick (result - 1);
+                        });
+}
+
+void Selector::mouseDown (const juce::MouseEvent& e)
+{
+    switch (zoneAt (e.getPosition()))
+    {
+        case Zone::previous: pick (selected - 1); break;
+        case Zone::next:     pick (selected + 1); break;
+        case Zone::name:     showMenu(); break;
+        case Zone::none:     break;
+    }
+}
+
+void Selector::mouseMove (const juce::MouseEvent& e)
 {
     const auto zone = zoneAt (e.getPosition());
     if (zone != hovered)
@@ -249,7 +269,7 @@ void StyleSelector::mouseMove (const juce::MouseEvent& e)
     }
 }
 
-void StyleSelector::mouseExit (const juce::MouseEvent&)
+void Selector::mouseExit (const juce::MouseEvent&)
 {
     hovered = Zone::none;
     repaint();

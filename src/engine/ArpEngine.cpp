@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
-#include <numeric>
 
 namespace arp
 {
@@ -346,13 +345,16 @@ void Engine::fireStep (int sample, std::vector<NoteEvent>& out)
         const int slot = params.style == Style::Random ? (int) (rng() % (unsigned) n)
                                                        : (position + params.offset) % n;
 
-        double offBeat = onGrid ? warp (stepHostPos + params.gate * len) - gridOffset
-                                : beatAt (sample) + params.gate * len;
+        const Step& step = sequence[(size_t) slot];
+        const double noteLength = params.gate * len * step.length;
+
+        double offBeat = onGrid ? warp (stepHostPos + noteLength) - gridOffset
+                                : beatAt (sample) + noteLength;
         offBeat = std::max (offBeat, beatAt (sample) + beatsPerSample);
 
-        auto play = [&] (const HeldNote& h)
+        forEachNoteOf (step, [&] (const HeldNote& h, int shift)
         {
-            const int pitch = transposeNote (h.note);
+            const int pitch = transposeNote (h.note + shift);
             if (pitch < 0 || pitch > 127)
                 return;
 
@@ -370,16 +372,10 @@ void Engine::fireStep (int sample, std::vector<NoteEvent>& out)
                 }
             }
 
-            out.push_back ({ sample, true, h.channel, pitch, velocityFor (h.velocity, sample) });
+            const int velocity = std::clamp ((int) std::lround (h.velocity * step.velocity), 1, 127);
+            out.push_back ({ sample, true, h.channel, pitch, velocityFor (velocity, sample) });
             sounding.push_back ({ pitch, h.channel, offBeat });
-        };
-
-        const int value = sequence[(size_t) slot];
-        if (value == chordStep)
-            for (const auto& h : sorted)
-                play (h);
-        else
-            play (sorted[(size_t) value]);
+        });
 
         lastDisplayStep = ((slot - params.offset) % n + n) % n;
         ++stepCounter;
@@ -453,12 +449,8 @@ void Engine::rebuildSequence()
     sequence = buildPattern (params.style, n);
 
     if (params.style == Style::PlayOrder)
-    {
-        sequence.resize ((size_t) n);
-        std::iota (sequence.begin(), sequence.end(), 0);
-        std::sort (sequence.begin(), sequence.end(), [this] (int a, int b)
-                   { return sorted[(size_t) a].order < sorted[(size_t) b].order; });
-    }
+        std::sort (sequence.begin(), sequence.end(), [this] (const Step& a, const Step& b)
+                   { return sorted[(size_t) a.index].order < sorted[(size_t) b.index].order; });
 
     sequenceDirty = false;
 
@@ -469,6 +461,40 @@ void Engine::rebuildSequence()
 void Engine::shuffleSequence()
 {
     std::shuffle (sequence.begin(), sequence.end(), rng);
+}
+
+template <typename Fn>
+void Engine::forEachNoteOf (const Step& step, Fn&& fn) const
+{
+    const int n = (int) sorted.size();
+    if (n == 0)
+        return;
+
+    const int shift = step.octave * 12;
+
+    switch (step.kind)
+    {
+        case Step::Kind::Note:
+            // Indices past the held notes climb into the next octaves.
+            fn (sorted[(size_t) (step.index % n)], shift + 12 * (step.index / n));
+            break;
+
+        case Step::Kind::Chord:
+            for (const auto& h : sorted)
+                fn (h, shift);
+            break;
+
+        case Step::Kind::Bass:  fn (sorted.front(), shift); break;
+        case Step::Kind::Top:   fn (sorted.back(), shift);  break;
+
+        case Step::Kind::Upper:
+            for (int i = n > 1 ? 1 : 0; i < n; ++i)
+                fn (sorted[(size_t) i], shift);
+            break;
+
+        case Step::Kind::Rest:
+            break;
+    }
 }
 
 int Engine::transposeNote (int note) const
@@ -508,21 +534,17 @@ void Engine::fillSnapshot (Snapshot& s)
 
     for (int i = 0; i < s.numSteps; ++i)
     {
-        auto& step = s.steps[(size_t) i];
-        const int value = sequence[(size_t) ((i + params.offset) % n)];
-        step.count = 0;
+        auto& view = s.steps[(size_t) i];
+        const auto& step = sequence[(size_t) ((i + params.offset) % n)];
+        view.count = 0;
+        view.length = (uint8_t) std::clamp (step.length, 1, 255);
 
-        if (value == chordStep)
+        forEachNoteOf (step, [&view] (const HeldNote& h, int shift)
         {
-            for (const auto& h : sorted)
-                if (step.count < Snapshot::maxNotesPerStep)
-                    step.notes[step.count++] = (uint8_t) h.note;
-        }
-        else
-        {
-            step.notes[0] = (uint8_t) sorted[(size_t) value].note;
-            step.count = 1;
-        }
+            const int pitch = h.note + shift;
+            if (pitch >= 0 && pitch <= 127 && view.count < Snapshot::maxNotesPerStep)
+                view.notes[view.count++] = (uint8_t) pitch;
+        });
     }
 
     s.currentStep = s.active && lastDisplayStep < s.numSteps ? lastDisplayStep : -1;

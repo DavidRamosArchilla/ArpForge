@@ -33,6 +33,10 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    /** Factory presets (message thread). The index is saved with the state. */
+    void loadPreset (int index);
+    int getPresetIndex() const;
+
     /** Called from the editor to get what the arpeggiator is doing right now. */
     void copySnapshot (arp::Snapshot& dest);
 

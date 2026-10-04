@@ -1,5 +1,5 @@
 CXX ?= g++
-CXXFLAGS ?= -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -fsanitize=address,undefined
+CXXFLAGS ?= -std=c++20 -O1 -g -Wall -Wextra -Wpedantic -fsanitize=address,undefined
 
 SOURCES = EngineTests.cpp ../src/engine/ArpEngine.cpp ../src/engine/Patterns.cpp
 

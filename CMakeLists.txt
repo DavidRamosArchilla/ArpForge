@@ -37,6 +37,7 @@ target_sources (ArpForge PRIVATE
     src/engine/ArpEngine.cpp
     src/engine/Patterns.cpp
     src/Parameters.cpp
+    src/Presets.cpp
     src/PluginProcessor.cpp
     src/PluginEditor.cpp
     src/ui/Controls.cpp
@@ -77,6 +78,7 @@ if (ARPFORGE_TOOLS)
         src/engine/ArpEngine.cpp
         src/engine/Patterns.cpp
         src/Parameters.cpp
+        src/Presets.cpp
         src/PluginProcessor.cpp
         src/PluginEditor.cpp
         src/ui/Controls.cpp

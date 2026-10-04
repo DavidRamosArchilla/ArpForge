@@ -43,10 +43,30 @@ inline const juce::StringArray& styleNames()
         "Up", "Down", "UpDown", "DownUp", "Up & Down", "Down & Up",
         "Converge", "Diverge", "Con & Diverge",
         "Pinky Up", "Pinky UpDown", "Thumb Up", "Thumb UpDown",
-        "Play Order", "Chord Trigger", "Random", "Random Other", "Random Once"
+        "Play Order", "Chord Trigger", "Random", "Random Other", "Random Once",
+
+        "Gallop", "Tresillo", "Octave Bounce", "Alberti", "Stutter",
+        "Syncopated", "Dotted 8ths", "Pedal", "Cascade", "Ping Pong",
+
+        "Offbeat Stabs", "Tresillo Chords", "Charleston", "Clave 3-2", "Dembow", "Pulse Accents",
+        "Trance Gate", "Piano Comp", "Ballad", "Skank", "Gallop Chords", "Stutter Chords"
     };
     return names;
 }
+
+/** How the style menu is grouped: a header per group, separators inside. */
+struct StyleGroup
+{
+    const char* title;
+    int first, last;
+    std::array<int, 4> separatorsAfter;   // -1 = unused
+};
+
+inline constexpr std::array<StyleGroup, 3> styleGroups {{
+    { "CLASSIC",       0, 17, { 5, 8, 12, 14 } },
+    { "RHYTHMIC",     18, 27, { -1, -1, -1, -1 } },
+    { "CHORD RHYTHMS", 28, 39, { -1, -1, -1, -1 } },
+}};
 
 inline const std::array<NamedLength, 16>& rates()
 {
@@ -61,6 +81,15 @@ inline const std::array<NamedLength, 16>& rates()
 }
 
 inline constexpr int defaultRateIndex = 11; // 1/16
+
+inline int rateIndex (const char* name)
+{
+    for (size_t i = 0; i < rates().size(); ++i)
+        if (juce::String (rates()[i].name) == name)
+            return (int) i;
+    jassertfalse;
+    return defaultRateIndex;
+}
 
 inline const std::array<NamedLength, 8>& retriggerRates()
 {

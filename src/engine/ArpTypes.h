@@ -25,10 +25,36 @@ enum class Style : int
     ChordTrigger,
     Random,
     RandomOther,
-    RandomOnce
+    RandomOnce,
+
+    // Rhythmic patterns
+    Gallop,
+    Tresillo,
+    OctaveBounce,
+    Alberti,
+    Stutter,
+    Syncopated,
+    DottedEighths,
+    Pedal,
+    Cascade,
+    PingPong,
+
+    // Chord rhythms
+    OffbeatStabs,
+    TresilloChords,
+    Charleston,
+    Clave,
+    Dembow,
+    PulseAccents,
+    TranceGate,
+    PianoComp,
+    Ballad,
+    Skank,
+    GallopChords,
+    StutterChords
 };
 
-constexpr int numStyles = 18;
+constexpr int numStyles = 40;
 
 enum class Groove : int { Straight, Swing8, Swing16 };
 enum class Retrigger : int { Off, Note, Beat };
@@ -90,7 +116,8 @@ struct Snapshot
 
     struct Step
     {
-        uint8_t count = 0;
+        uint8_t count = 0;    // 0 = rest
+        uint8_t length = 1;   // in steps, longer for tied notes
         std::array<uint8_t, maxNotesPerStep> notes {};
     };
 

@@ -64,6 +64,9 @@ void PatternView::paint (juce::Graphics& g)
     pitches.erase (std::unique (pitches.begin(), pitches.end()), pitches.end());
 
     const int lanes = (int) pitches.size();
+    if (lanes == 0)
+        return;
+
     auto inner = area.reduced (12.0f, 10.0f);
     const auto gutter = inner.removeFromLeft (34.0f);
     inner.removeFromRight (snap.transposeSteps > 0 ? 18.0f : 0.0f);
@@ -114,8 +117,9 @@ void PatternView::paint (juce::Graphics& g)
 
         for (int k = 0; k < step.count; ++k)
         {
+            const int length = juce::jmin ((int) step.length, snap.numSteps - i);
             const auto note = juce::Rectangle<float> (x + 3.0f, laneY (step.notes[(size_t) k]) - noteHeight * 0.5f,
-                                                      columnWidth - 6.0f, noteHeight);
+                                                      columnWidth * (float) length - 6.0f, noteHeight);
 
             if (heat > 0.02f)
             {

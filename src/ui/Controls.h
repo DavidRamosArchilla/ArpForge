@@ -61,11 +61,25 @@ private:
     std::unique_ptr<APVTS::ComboBoxAttachment> attachment;
 };
 
-/** Big style picker: arrows step through styles, the name opens a menu. */
-class StyleSelector final : public juce::Component
+/** A list picker: arrows step through the items, clicking the name opens a
+    menu with one column per section. */
+class Selector final : public juce::Component
 {
 public:
-    StyleSelector (juce::RangedAudioParameter& param, juce::StringArray names);
+    struct Section
+    {
+        juce::String title;
+        int first, last;
+        std::vector<int> separatorsAfter;
+    };
+
+    Selector (juce::StringArray names, std::vector<Section> sections, float textHeight, bool showCount);
+
+    /** Called when the user picks an item. */
+    std::function<void (int)> onSelect;
+
+    /** Updates what's shown, without calling onSelect. */
+    void setSelected (int index);
 
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -75,10 +89,13 @@ public:
 private:
     enum class Zone { none, previous, name, next };
     Zone zoneAt (juce::Point<int> p) const;
-    void select (int index);
+    void pick (int index);
+    void showMenu();
 
     juce::StringArray names;
+    std::vector<Section> sections;
+    float textHeight;
+    bool showCount;
     int selected = 0;
     Zone hovered = Zone::none;
-    juce::ParameterAttachment attachment;
 };

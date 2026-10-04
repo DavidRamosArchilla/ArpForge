@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "Parameters.h"
+#include "Presets.h"
 #include "engine/Scales.h"
 
 using namespace theme;
@@ -25,6 +26,44 @@ namespace
         return state.getRawParameterValue (id)->load();
     }
 
+    std::vector<Selector::Section> styleSections()
+    {
+        std::vector<Selector::Section> sections;
+        for (const auto& group : params::styleGroups)
+        {
+            Selector::Section s { group.title, group.first, group.last, {} };
+            for (int i : group.separatorsAfter)
+                if (i >= 0)
+                    s.separatorsAfter.push_back (i);
+            sections.push_back (s);
+        }
+        return sections;
+    }
+
+    juce::StringArray presetNames()
+    {
+        juce::StringArray names;
+        for (const auto& p : presets::all())
+            names.add (p.name);
+        return names;
+    }
+
+    /** One menu column per preset category. */
+    std::vector<Selector::Section> presetSections()
+    {
+        std::vector<Selector::Section> sections;
+        const auto& list = presets::all();
+
+        for (int i = 0; i < (int) list.size(); ++i)
+        {
+            const juce::String category (list[(size_t) i].category);
+            if (sections.empty() || sections.back().title != category.toUpperCase())
+                sections.push_back ({ category.toUpperCase(), i, i, {} });
+            sections.back().last = i;
+        }
+        return sections;
+    }
+
     void dim (juce::Component& c, bool inUse)
     {
         const float alpha = inUse ? 1.0f : 0.35f;
@@ -37,7 +76,9 @@ namespace
 ArpForgeEditor::Content::Content (ArpForgeProcessor& p)
     : processor (p),
       state (p.state),
-      style (param (state, params::id::style), params::styleNames()),
+      style (params::styleNames(), styleSections(), 16.0f, true),
+      presets (presetNames(), presetSections(), 13.0f, false),
+      styleAttachment (param (state, params::id::style), [this] (float v) { style.setSelected (juce::roundToInt (v)); }),
       hold (state, params::id::hold, "HOLD"),
       sync (state, params::id::sync, "SYNC"),
       velocityOn (state, params::id::velocityOn, "ON"),
@@ -60,11 +101,15 @@ ArpForgeEditor::Content::Content (ArpForgeProcessor& p)
       scale (state, params::id::transposeScale)
 {
     for (juce::Component* c : std::initializer_list<juce::Component*> {
-             &style, &pattern, &hold, &sync, &velocityOn, &velocityRetrig,
+             &style, &presets, &pattern, &hold, &sync, &velocityOn, &velocityRetrig,
              &groove, &retrigger, &transposeMode,
              &rate, &freeRate, &gate, &swing, &offset, &repeats, &retriggerRate,
              &distance, &steps, &velocityDecay, &velocityTarget, &key, &scale })
         addAndMakeVisible (c);
+
+    style.onSelect = [this] (int index) { styleAttachment.setValueAsCompleteGesture ((float) index); };
+    styleAttachment.sendInitialUpdate();
+    presets.onSelect = [this] (int index) { processor.loadPreset (index); };
 
     setSize (baseWidth, baseHeight);
     layout();
@@ -82,6 +127,7 @@ void ArpForgeEditor::Content::layout()
     }};
 
     hold.setBounds (baseWidth - 20 - 84, 15, 84, 28);
+    presets.setBounds (330, 15, 300, 28);
 
     // Inside a panel: a row of small controls under the title, then knobs.
     auto topRow = [] (const Panel& p) { return juce::Rectangle<int> (p.bounds.getX() + 16, p.bounds.getY() + 38, p.bounds.getWidth() - 32, 26); };
@@ -141,6 +187,7 @@ void ArpForgeEditor::Content::refresh()
 {
     processor.copySnapshot (snapshot);
     pattern.update (snapshot);
+    presets.setSelected (processor.getPresetIndex());
 
     // Show the controls that matter for the current settings.
     const bool synced = valueOf (state, params::id::sync) >= 0.5f;

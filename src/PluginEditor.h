@@ -39,7 +39,8 @@ private:
         ArpForgeProcessor& processor;
         APVTS& state;
 
-        StyleSelector style;
+        Selector style, presets;
+        juce::ParameterAttachment styleAttachment;
         PatternView pattern;
         Toggle hold, sync, velocityOn, velocityRetrig;
         Segmented groove, retrigger, transposeMode;

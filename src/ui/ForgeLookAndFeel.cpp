@@ -160,6 +160,14 @@ void ForgeLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectang
     g.drawText (text, r.withTrimmedLeft (22).withTrimmedRight (8), juce::Justification::centredLeft, true);
 }
 
+void ForgeLookAndFeel::drawPopupMenuSectionHeader (juce::Graphics& g, const juce::Rectangle<int>& area,
+                                                   const juce::String& name)
+{
+    g.setColour (colour::textFaint);
+    g.setFont (caps (10.0f));
+    g.drawText (name, area.reduced (12, 0).withTrimmedTop (4), juce::Justification::centredLeft, false);
+}
+
 juce::Font ForgeLookAndFeel::getPopupMenuFont()
 {
     return font (13.5f, Weight::medium);

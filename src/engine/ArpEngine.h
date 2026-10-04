@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ArpTypes.h"
+#include "Patterns.h"
 #include <cstdint>
 #include <random>
 #include <vector>
@@ -68,6 +69,10 @@ private:
     void shuffleSequence();
     void syncActiveWithHold();
     int transposeNote (int note) const;
+
+    /** Calls fn (heldNote, semitoneShift) for each note a step plays. */
+    template <typename Fn>
+    void forEachNoteOf (const Step& step, Fn&& fn) const;
     int velocityFor (int noteVelocity, int sample) const;
 
     Params params;
@@ -84,7 +89,7 @@ private:
     std::vector<HeldNote> physical;   // keys currently down
     std::vector<HeldNote> active;     // notes being arpeggiated (keys + latched)
     std::vector<HeldNote> sorted;     // active, by pitch
-    std::vector<int> sequence;
+    std::vector<Step> sequence;
     std::vector<SoundingNote> sounding;
     uint64_t orderCounter = 0;
     bool sequenceDirty = true;
