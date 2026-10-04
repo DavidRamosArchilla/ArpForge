@@ -1,0 +1,200 @@
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
+#include "Parameters.h"
+
+ArpForgeProcessor::ArpForgeProcessor()
+    : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      state (*this, nullptr, "ArpForge", params::createLayout())
+{
+}
+
+void ArpForgeProcessor::prepareToPlay (double sampleRate, int)
+{
+    engine.prepare (sampleRate);
+    noteInput.reserve (1024);
+    noteOutput.reserve (2048);
+    outputBuffer.ensureSize (8192);
+}
+
+bool ArpForgeProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+{
+    const auto out = layouts.getMainOutputChannelSet();
+    return layouts.getMainInputChannelSet().isDisabled()
+        && (out == juce::AudioChannelSet::stereo() || out == juce::AudioChannelSet::mono());
+}
+
+arp::Params ArpForgeProcessor::readParams() const
+{
+    auto value = [this] (const char* id) { return state.getRawParameterValue (id)->load(); };
+    auto index = [&value] (const char* id) { return juce::roundToInt (value (id)); };
+    auto flag  = [&value] (const char* id) { return value (id) >= 0.5f; };
+
+    arp::Params p;
+    p.style = (arp::Style) juce::jlimit (0, arp::numStyles - 1, index (params::id::style));
+    p.sync = flag (params::id::sync);
+    p.syncRateBeats = params::rates()[(size_t) juce::jlimit (0, (int) params::rates().size() - 1, index (params::id::rate))].beats;
+    p.freeRateMs = value (params::id::freeRate);
+    p.gate = value (params::id::gate) / 100.0;
+    p.groove = (arp::Groove) index (params::id::groove);
+    p.swing = value (params::id::swing) / 100.0;
+    p.hold = flag (params::id::hold);
+    p.offset = index (params::id::offset);
+
+    const int repeats = index (params::id::repeats);
+    p.repeats = repeats >= params::infiniteRepeats ? 0 : repeats;
+
+    p.retrigger = (arp::Retrigger) index (params::id::retrigger);
+    p.retriggerBeats = params::retriggerRates()[(size_t) juce::jlimit (0, (int) params::retriggerRates().size() - 1,
+                                                                       index (params::id::retriggerRate))].beats;
+    p.transposeMode = (arp::TransposeMode) index (params::id::transposeMode);
+    p.transposeKey = index (params::id::transposeKey);
+    p.transposeScale = index (params::id::transposeScale);
+    p.transposeDistance = index (params::id::distance);
+    p.transposeSteps = index (params::id::steps);
+    p.velocityOn = flag (params::id::velocityOn);
+    p.velocityDecayMs = value (params::id::velocityDecay);
+    p.velocityTarget = index (params::id::velocityTarget);
+    p.velocityRetrigger = flag (params::id::velocityRetrig);
+    return p;
+}
+
+void ArpForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
+    juce::ScopedNoDenormals noDenormals;
+    buffer.clear();
+    bypassed = false;
+
+    engine.setParams (readParams());
+
+    arp::Transport transport;
+    if (auto* playHead = getPlayHead())
+    {
+        if (const auto position = playHead->getPosition())
+        {
+            if (const auto bpm = position->getBpm())
+                transport.bpm = *bpm;
+
+            if (const auto ppq = position->getPpqPosition())
+            {
+                transport.ppqPosition = *ppq;
+                transport.hasPosition = true;
+            }
+
+            transport.playing = position->getIsPlaying();
+        }
+    }
+
+    const int numSamples = buffer.getNumSamples();
+    int segmentStart = 0;
+    outputBuffer.clear();
+    noteInput.clear();
+
+    // Notes feed the arpeggiator; everything else (CCs, pitch bend...) passes
+    // straight through so the synth still gets it.
+    for (const auto meta : midi)
+    {
+        const auto msg = meta.getMessage();
+        const int pos = juce::jlimit (0, juce::jmax (0, numSamples - 1), meta.samplePosition);
+
+        if (msg.isNoteOn())
+        {
+            noteInput.push_back ({ pos - segmentStart, true, msg.getChannel(), msg.getNoteNumber(), (int) msg.getVelocity() });
+        }
+        else if (msg.isNoteOff())
+        {
+            noteInput.push_back ({ pos - segmentStart, false, msg.getChannel(), msg.getNoteNumber(), 0 });
+        }
+        else if (msg.isAllNotesOff() || msg.isAllSoundOff())
+        {
+            runEngine (transport, segmentStart, pos);
+            noteOutput.clear();
+            engine.releaseAll (0, noteOutput);
+            addToOutput (noteOutput, pos);
+            outputBuffer.addEvent (msg, pos);
+            segmentStart = pos;
+        }
+        else
+        {
+            outputBuffer.addEvent (msg, pos);
+        }
+    }
+
+    runEngine (transport, segmentStart, numSamples);
+    midi.swapWith (outputBuffer);
+
+    const juce::SpinLock::ScopedTryLockType lock (snapshotLock);
+    if (lock.isLocked())
+        engine.fillSnapshot (snapshot);
+}
+
+void ArpForgeProcessor::runEngine (const arp::Transport& transport, int start, int end)
+{
+    if (end <= start)
+        return;
+
+    auto segment = transport;
+    if (segment.hasPosition)
+        segment.ppqPosition += start * segment.bpm / 60.0 / getSampleRate();
+
+    noteOutput.clear();
+    engine.process (segment, end - start, noteInput, noteOutput);
+    addToOutput (noteOutput, start);
+    noteInput.clear();
+}
+
+void ArpForgeProcessor::addToOutput (const std::vector<arp::NoteEvent>& events, int start)
+{
+    for (const auto& e : events)
+    {
+        const int channel = juce::jlimit (1, 16, e.channel);
+        const auto msg = e.isNoteOn ? juce::MidiMessage::noteOn (channel, e.note, (juce::uint8) e.velocity)
+                                    : juce::MidiMessage::noteOff (channel, e.note);
+        outputBuffer.addEvent (msg, start + e.sampleOffset);
+    }
+}
+
+void ArpForgeProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
+    buffer.clear();
+
+    // Bypassed: the incoming notes go through untouched. Close whatever the
+    // arpeggiator was playing so nothing hangs.
+    if (! bypassed)
+    {
+        bypassed = true;
+        noteOutput.clear();
+        engine.releaseAll (0, noteOutput);
+
+        for (const auto& e : noteOutput)
+            midi.addEvent (juce::MidiMessage::noteOff (juce::jlimit (1, 16, e.channel), e.note), 0);
+    }
+}
+
+void ArpForgeProcessor::copySnapshot (arp::Snapshot& dest)
+{
+    const juce::SpinLock::ScopedLockType lock (snapshotLock);
+    dest = snapshot;
+}
+
+void ArpForgeProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    if (auto xml = state.copyState().createXml())
+        copyXmlToBinary (*xml, destData);
+}
+
+void ArpForgeProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    if (auto xml = getXmlFromBinary (data, sizeInBytes))
+        if (xml->hasTagName (state.state.getType()))
+            state.replaceState (juce::ValueTree::fromXml (*xml));
+}
+
+juce::AudioProcessorEditor* ArpForgeProcessor::createEditor()
+{
+    return new ArpForgeEditor (*this);
+}
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new ArpForgeProcessor();
+}
