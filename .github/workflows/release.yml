@@ -14,23 +14,30 @@ jobs:
   windows:
     runs-on: windows-latest
 
+    # bash, not the default PowerShell: PowerShell splits -DARPFORGE_VERSION=1.0.0
+    # at the first dot.
+    defaults:
+      run:
+        shell: bash
+
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Version from tag
-        shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
+      # No -G: CMake picks the newest Visual Studio on the runner, so image
+      # updates (VS 2022 -> 2026...) don't break the build.
       - name: Configure
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DARPFORGE_VERSION=${{ env.VERSION }} -DARPFORGE_TOOLS=OFF
+        run: cmake -S . -B build -A x64 "-DARPFORGE_VERSION=$VERSION" -DARPFORGE_TOOLS=OFF
 
       - name: Build
         run: cmake --build build --config Release --parallel
 
       - name: Test
-        run: build\Release\EngineTests.exe
+        run: ./build/Release/EngineTests.exe
 
       - name: Package
         shell: pwsh
@@ -42,7 +49,6 @@ jobs:
           Compress-Archive -Path $dir -DestinationPath "$dir.zip"
 
       - name: Publish release
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
