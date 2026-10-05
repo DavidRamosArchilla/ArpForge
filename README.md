@@ -11,37 +11,46 @@ mixer. It sends its notes to the synth through an FL Studio MIDI port:
 
 1. Add **ArpForge** to the Channel Rack (it appears among the generators after a plugin
    scan: *Options → Manage plugins → Find installed plugins*).
-2. Open ArpForge, click the gear icon (plugin wrapper settings) and set
-   **MIDI → Output port** to a free number, e.g. `1`.
+2. Open ArpForge, click the gear icon (plugin wrapper settings) and, in the **Settings**
+   tab, set **MIDI → Output port** to a free number, e.g. `1`.
 3. Add your synth to the Channel Rack, open its wrapper settings and set
    **MIDI → Input port** to the same number.
 4. Write or play your chords on the **ArpForge** channel. The synth plays the arpeggio.
 
-Each ArpForge/synth pair needs its own port number.
+![FL Studio setup: ArpForge's Output port and Serum's Input port both set to 1, with the chords written in ArpForge's piano roll](docs/images/fl-studio-setup.png)
 
-### Instruments without a MIDI input port (Sytrus, FLEX, 3x Osc...)
+*ArpForge (top) sends on port 1, Serum (bottom) listens on port 1, and the chords are
+written in ArpForge's piano roll, not the synth's.*
 
-FL Studio's native plugins can't receive notes from a MIDI port. Use **capture & drag**
-instead: ArpForge records everything it plays, and the **DRAG MIDI** tile in the Pattern
-panel turns it into a MIDI clip.
+Each ArpForge/synth pair needs its own port number. Leave ArpForge's **Input port** and the
+synth's **Output port** empty (`---`).
 
-1. Play your chords through ArpForge (with or without a synth connected).
-2. Drag the **DRAG MIDI** tile into the instrument's piano roll or the Playlist. Click it
-   instead to save a `.mid` file.
+### Instruments without a MIDI input port: use Drag MIDI
+
+Some of FL Studio's stock instruments (Sytrus, FLEX, 3x Osc, Harmor...) don't have the
+**MIDI → Input port** option, so they can't listen to ArpForge directly. For those, use the
+**DRAG MIDI** tile at the top of ArpForge's Pattern panel: ArpForge records every note it
+plays, and the tile turns it into a MIDI clip.
+
+1. Write your chords on the ArpForge channel and press play. You don't need a synth
+   connected; the orange dot on the tile shows it's capturing.
+2. Stop, then drag the **DRAG MIDI** tile into the instrument's piano roll or the Playlist.
+   The arpeggio arrives as normal notes you can edit. Clicking the tile instead saves a
+   `.mid` file.
 
 A take runs from pressing play to stopping, and it starts on a bar line so the clip drops in
 time. With the transport stopped, a take is one live performance; a 2-second pause starts a
-new one. The orange dot means it's capturing.
+new one.
 
 ## Controls
 
 | Section   | Control                | What it does |
 |-----------|------------------------|--------------|
-| Pattern   | Style                  | **Classic:** Up, Down, UpDown, DownUp, Up & Down, Down & Up, Converge, Diverge, Con & Diverge, Pinky Up, Pinky UpDown, Thumb Up, Thumb UpDown, Play Order, Chord Trigger, Random, Random Other, Random Once. **Rhythmic:** Gallop, Tresillo, Octave Bounce, Alberti, Stutter, Syncopated, Dotted 8ths, Pedal, Cascade, Ping Pong. **Chord rhythms:** Offbeat Stabs, Tresillo Chords, Charleston, Clave 3-2, Dembow, Pulse Accents, Trance Gate, Piano Comp, Ballad, Skank, Gallop Chords, Stutter Chords |
+| Pattern   | Style                  | **Classic:** Up, Down, UpDown, DownUp, Up & Down, Down & Up, Converge, Diverge, Con & Diverge, Pinky Up, Pinky UpDown, Thumb Up, Thumb UpDown, Play Order, Chord Trigger, Random, Random Other, Random Once. **Rhythmic:** Gallop, Tresillo, Octave Bounce, Alberti, Stutter, Syncopated, Dotted 8ths, Pedal, Cascade, Ping Pong. **Chord rhythms:** Offbeat Stabs, Tresillo Chords, Charleston, Clave 3-2, Dembow, Pulse Accents, Trance Gate, Piano Comp, Ballad, Skank, Gallop Chords, Stutter Chords. **Chasse** (modelled on Sytrus' Chasse preset): Chasse, Chasse Lift, Chasse Offbeat, Chasse Dyads |
 | Rhythm    | Sync / Rate            | Step length synced to the tempo (1/1 … 1/64, dotted and triplets) or free in ms |
 |           | Gate                   | Note length as a percentage of a step (1–200%) |
 |           | Groove / Swing         | Straight, Swing 8 or Swing 16, with swing amount |
-| Header    | Presets                | 27 factory presets: classic arps, rhythmic patterns and chord rhythms |
+| Header    | Presets                | 35 factory presets: classic arps, rhythmic patterns, chord rhythms and Chasse variations |
 | Pattern   | Drag MIDI              | Drag the captured arpeggio into a piano roll, or click to save it as a `.mid` file |
 | Header    | Hold                   | Keeps arpeggiating after the keys are released; new notes pressed after releasing replace the held ones |
 | Sequence  | Retrigger              | Off, on every new Note, or every Beat interval (Every) |
