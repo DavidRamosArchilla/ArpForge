@@ -94,6 +94,7 @@ private:
     std::vector<HeldNote> sorted;     // active, by pitch
     std::vector<Step> sequence;
     std::vector<SoundingNote> sounding;
+    mutable std::vector<std::pair<int, int>> stepNotes;   // scratch: (sorted index, shift)
     uint64_t orderCounter = 0;
     bool sequenceDirty = true;
 

@@ -183,7 +183,7 @@ std::vector<int> order (arp::Style style, int n)
 {
     std::vector<int> v;
     for (const auto& s : arp::buildPattern (style, n))
-        v.push_back (s.kind == arp::Step::Kind::Chord ? -1 : s.index);
+        v.push_back (s.picks[0].kind == arp::Pick::Kind::Chord ? -1 : s.picks[0].index);
     return v;
 }
 
@@ -235,18 +235,23 @@ const std::vector<Test> tests = {
 
     { "pattern notation: notes, octaves, ties, rests, accents", []
     {
-        using K = arp::Step::Kind;
-        const auto s = arp::parsePattern ("0! 2' - . C - - B, U? T . - 1");
-        CHECK (s.size() == 13);
-        CHECK ((s[0] == arp::Step { K::Note, 0, 0, 1, arp::accentVelocity }));
-        CHECK ((s[1] == arp::Step { K::Note, 2, 1, 2, arp::normalVelocity }));
-        CHECK (s[2].kind == K::Rest && s[3].kind == K::Rest);
-        CHECK (s[4].kind == K::Chord && s[4].length == 3);
-        CHECK ((s[7] == arp::Step { K::Bass, 0, -1, 1, arp::normalVelocity }));
-        CHECK (s[8].kind == K::Upper && s[8].velocity == arp::ghostVelocity);
-        CHECK (s[9].kind == K::Top);
-        CHECK (s[11].kind == K::Rest);   // a tie after a rest stays a rest
-        CHECK (s[12].kind == K::Note && s[12].index == 1);
+        using K = arp::Pick::Kind;
+        const auto s = arp::parsePattern ("0! 2' - . C - - B, U? T . - 1 M+T'! B+B");
+        CHECK (s.size() == 15);
+        CHECK ((s[0] == arp::Step::of ({ K::Note, 0, 0 }, arp::accentVelocity)));
+        auto tied = arp::Step::of ({ K::Note, 2, 1 }, arp::normalVelocity);
+        tied.length = 2;
+        CHECK (s[1] == tied);
+        CHECK (s[2].isRest() && s[3].isRest());
+        CHECK (s[4].picks[0].kind == K::Chord && s[4].length == 3);
+        CHECK ((s[7] == arp::Step::of ({ K::Bass, 0, -1 }, arp::normalVelocity)));
+        CHECK (s[8].picks[0].kind == K::Upper && s[8].velocity == arp::ghostVelocity);
+        CHECK (s[9].picks[0].kind == K::Top);
+        CHECK (s[11].isRest());   // a tie after a rest stays a rest
+        CHECK (s[12].picks[0].kind == K::Note && s[12].picks[0].index == 1);
+        CHECK (s[13].numPicks == 2 && s[13].picks[0].kind == K::Middle);
+        CHECK ((s[13].picks[1] == arp::Pick { K::Top, 0, 1 }) && s[13].velocity == arp::accentVelocity);
+        CHECK (s[14].numPicks == 2);
     } },
 
     { "every written pattern parses to whole beats", []
@@ -255,7 +260,7 @@ const std::vector<Test> tests = {
         {
             const auto steps = arp::buildPattern ((arp::Style) i, 3);
             CHECK (steps.size() >= 4 && steps.size() % 4 == 0);
-            CHECK (steps.front().velocity == arp::accentVelocity || steps.front().kind == arp::Step::Kind::Rest);
+            CHECK (steps.front().velocity == arp::accentVelocity || steps.front().isRest());
         }
     } },
 
@@ -593,6 +598,28 @@ const std::vector<Test> tests = {
         CHECK_EQ_VEC (std::vector<long> (t.begin() + 4, t.end()), (std::vector<long> { 24000, 36000 }));
     } },
 
+    { "joined notes play together, duplicates once", []
+    {
+        Harness h;
+        h.params.style = arp::Style::Chasse;   // starts "B! B? M . M M+T"
+        h.apply();
+        h.chord (0, { 60, 64, 67 });
+        h.run (6 * sixteenth - 1);
+        CHECK_EQ_VEC (h.onNotes(), (std::vector<int> { 60, 60, 64, 64, 64, 67 }));
+        const auto times = h.onTimes();
+        CHECK_EQ_VEC (std::vector<long> (times.begin() + 4, times.end()),
+                      (std::vector<long> { 5 * sixteenth, 5 * sixteenth }));
+
+        Harness single;
+        single.params.style = arp::Style::Chasse;
+        single.apply();
+        single.on (0, 60);
+        single.run (beat * 2);
+        for (int n : single.onNotes())
+            CHECK (n == 60);   // one held note: every hit is that note, like Sytrus
+        CHECK (single.onNotes().size() == 6);   // x x x . twice
+    } },
+
     { "chord rhythm plays stabs on its steps only", []
     {
         Harness h;
@@ -821,6 +848,7 @@ const std::vector<Test> tests = {
 
 int main()
 {
+    std::setvbuf (stdout, nullptr, _IONBF, 0);
     for (const auto& [name, fn] : tests)
     {
         const int before = failures;

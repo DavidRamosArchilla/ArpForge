@@ -49,7 +49,9 @@ inline const juce::StringArray& styleNames()
         "Syncopated", "Dotted 8ths", "Pedal", "Cascade", "Ping Pong",
 
         "Offbeat Stabs", "Tresillo Chords", "Charleston", "Clave 3-2", "Dembow", "Pulse Accents",
-        "Trance Gate", "Piano Comp", "Ballad", "Skank", "Gallop Chords", "Stutter Chords"
+        "Trance Gate", "Piano Comp", "Ballad", "Skank", "Gallop Chords", "Stutter Chords",
+
+        "Chasse", "Chasse Lift", "Chasse Offbeat", "Chasse Dyads"
     };
     return names;
 }
@@ -62,10 +64,11 @@ struct StyleGroup
     std::array<int, 4> separatorsAfter;   // -1 = unused
 };
 
-inline constexpr std::array<StyleGroup, 3> styleGroups {{
+inline constexpr std::array<StyleGroup, 4> styleGroups {{
     { "CLASSIC",       0, 17, { 5, 8, 12, 14 } },
     { "RHYTHMIC",     18, 27, { -1, -1, -1, -1 } },
     { "CHORD RHYTHMS", 28, 39, { -1, -1, -1, -1 } },
+    { "CHASSE",       40, 43, { -1, -1, -1, -1 } },
 }};
 
 inline const std::array<NamedLength, 16>& rates()

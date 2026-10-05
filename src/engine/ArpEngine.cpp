@@ -39,6 +39,7 @@ void Engine::prepare (double newSampleRate)
     sorted.reserve (128);
     sequence.reserve (512);
     sounding.reserve (512);
+    stepNotes.reserve (1024);
     reset();
 }
 
@@ -499,7 +500,7 @@ void Engine::rebuildSequence()
 
     if (params.style == Style::PlayOrder)
         std::sort (sequence.begin(), sequence.end(), [this] (const Step& a, const Step& b)
-                   { return sorted[(size_t) a.index].order < sorted[(size_t) b.index].order; });
+                   { return sorted[(size_t) a.picks[0].index].order < sorted[(size_t) b.picks[0].index].order; });
 
     sequenceDirty = false;
 
@@ -519,31 +520,46 @@ void Engine::forEachNoteOf (const Step& step, Fn&& fn) const
     if (n == 0)
         return;
 
-    const int shift = step.octave * 12;
-
-    switch (step.kind)
+    // Collect first so a note picked twice in one step (e.g. B+T with one
+    // held note) plays once.
+    stepNotes.clear();
+    auto add = [this] (int index, int shift)
     {
-        case Step::Kind::Note:
-            // Indices past the held notes climb into the next octaves.
-            fn (sorted[(size_t) (step.index % n)], shift + 12 * (step.index / n));
-            break;
+        const std::pair<int, int> entry { index, shift };
+        if (std::find (stepNotes.begin(), stepNotes.end(), entry) == stepNotes.end())
+            stepNotes.push_back (entry);
+    };
 
-        case Step::Kind::Chord:
-            for (const auto& h : sorted)
-                fn (h, shift);
-            break;
+    for (int p = 0; p < step.numPicks; ++p)
+    {
+        const auto& pick = step.picks[(size_t) p];
+        const int shift = pick.octave * 12;
 
-        case Step::Kind::Bass:  fn (sorted.front(), shift); break;
-        case Step::Kind::Top:   fn (sorted.back(), shift);  break;
+        switch (pick.kind)
+        {
+            case Pick::Kind::Note:
+                // Indices past the held notes climb into the next octaves.
+                add (pick.index % n, shift + 12 * (pick.index / n));
+                break;
 
-        case Step::Kind::Upper:
-            for (int i = n > 1 ? 1 : 0; i < n; ++i)
-                fn (sorted[(size_t) i], shift);
-            break;
+            case Pick::Kind::Chord:
+                for (int i = 0; i < n; ++i)
+                    add (i, shift);
+                break;
 
-        case Step::Kind::Rest:
-            break;
+            case Pick::Kind::Bass:    add (0, shift);     break;
+            case Pick::Kind::Middle:  add (n / 2, shift); break;
+            case Pick::Kind::Top:     add (n - 1, shift); break;
+
+            case Pick::Kind::Upper:
+                for (int i = n > 1 ? 1 : 0; i < n; ++i)
+                    add (i, shift);
+                break;
+        }
     }
+
+    for (const auto& [index, shift] : stepNotes)
+        fn (sorted[(size_t) index], shift);
 }
 
 int Engine::transposeNote (int note) const

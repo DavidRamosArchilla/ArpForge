@@ -51,6 +51,16 @@ const std::vector<Preset>& all()
         { "Reggae Skank", "Chord Rhythms", { style (S::Skank), gate (30) } },
         { "Gallop Chords", "Chord Rhythms", { style (S::GallopChords), gate (50) } },
         { "Stutter Chords", "Chord Rhythms", { style (S::StutterChords), gate (60) } },
+
+        { "Chasse", "Chasse", { style (S::Chasse), gate (45) } },
+        { "Chasse Lift", "Chasse", { style (S::ChasseLift), gate (45) } },
+        { "Chasse Offbeat", "Chasse", { style (S::ChasseOffbeat), gate (40) } },
+        { "Chasse Dyads", "Chasse", { style (S::ChasseDyads), gate (55) } },
+        { "Chasse Half-Time", "Chasse", { style (S::Chasse), rate ("1/8"), gate (40) } },
+        { "Chasse Swing", "Chasse", { style (S::Chasse), gate (45), swing16(), swingAmount (57) } },
+        { "Chasse Octaves", "Chasse", { style (S::Chasse), gate (40), octaves (1) } },
+        { "Chasse Fade", "Chasse", { style (S::Chasse), gate (45), { id::velocityOn, 1 },
+                                     { id::velocityDecay, 4000 }, { id::velocityTarget, 40 } } },
     };
     return list;
 }

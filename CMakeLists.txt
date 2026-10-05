@@ -50,10 +50,15 @@ target_sources (ArpForge PRIVATE
     src/ui/PatternView.cpp
     src/ui/Theme.cpp)
 
+# JUCE_VST3_EMULATE_MIDI_CC_WITH_PARAMETERS: VST3 hosts deliver MIDI CCs and
+# pitch bend through ~2000 hidden parameters whose default value is 0. FL Studio
+# re-sends them whenever a plugin is added, which turned into "pitch bend fully
+# down" and, passed on to the synth, detuned it. ArpForge only needs notes.
 target_compile_definitions (ArpForge PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_VST3_EMULATE_MIDI_CC_WITH_PARAMETERS=0
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
 target_link_libraries (ArpForge

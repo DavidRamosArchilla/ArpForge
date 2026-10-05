@@ -158,6 +158,15 @@ namespace
         ". . . . C! . C? . . . . . C! . C? .",               // Skank
         "C! . C C C . C C C! . C C C . C C",                 // Gallop Chords
         "C! C C C . . C - C! C . . C . C .",                 // Stutter Chords
+
+        // Chasse, transcribed from Sytrus' "Chasse" preset: three 16ths and a
+        // rest per beat, moving between bass, middle and top with some dyads.
+        // B/M/T keep every hit on the same note when only one note is held.
+        "B! B? M . M M+T B . M+T M+T! T! . T B? M+T . "
+        "M+T M+T? B . T M+T? T . B B! B . B+T B+T B! .",       // Chasse
+        "B! B? M . M M+T B . M+T M+T! T! . T' M' B'! .",      // Chasse Lift
+        ". B! M T? . M+T B! M . T M! B . M+T! T B?",          // Chasse Offbeat
+        "B+M! B+M? M+T . M+T B+T M+T! . B+M! M+T? B+T . M+T! B+M B+T' .", // Chasse Dyads
     };
 } // namespace
 
@@ -183,41 +192,54 @@ std::vector<Step> parsePattern (std::string_view text)
         Step step;
         step.velocity = normalVelocity;
 
-        switch (token[0])
+        if (token[0] == '.' || token[0] == '-')
         {
-            case '.':
-                step.kind = Step::Kind::Rest;
+            if (token[0] == '-' && lastNote >= 0)
+                ++steps[(size_t) lastNote].length;
+            else
                 lastNote = -1;
-                steps.push_back (step);
-                continue;
 
-            case '-':
-                if (lastNote >= 0)
-                    ++steps[(size_t) lastNote].length;
-                step.kind = Step::Kind::Rest;
-                steps.push_back (step);
-                continue;
-
-            case 'C': step.kind = Step::Kind::Chord; break;
-            case 'B': step.kind = Step::Kind::Bass;  break;
-            case 'T': step.kind = Step::Kind::Top;   break;
-            case 'U': step.kind = Step::Kind::Upper; break;
-
-            default:
-                if (token[0] < '0' || token[0] > '9')
-                    continue;   // unknown token: ignore
-                step.kind = Step::Kind::Note;
-                step.index = token[0] - '0';
-                break;
+            steps.push_back (step);   // a rest, or the held part of a tied note
+            continue;
         }
 
-        for (char c : token.substr (1))
+        // One or more notes joined with '+', each with its own octave marks.
+        size_t p = 0;
+        while (p < token.size())
         {
-            if (c == '\'')      ++step.octave;
-            else if (c == ',')  --step.octave;
-            else if (c == '!')  step.velocity = accentVelocity;
-            else if (c == '?')  step.velocity = ghostVelocity;
+            Pick pick;
+            bool known = true;
+
+            switch (token[p])
+            {
+                case 'C': pick.kind = Pick::Kind::Chord;  break;
+                case 'B': pick.kind = Pick::Kind::Bass;   break;
+                case 'M': pick.kind = Pick::Kind::Middle; break;
+                case 'T': pick.kind = Pick::Kind::Top;    break;
+                case 'U': pick.kind = Pick::Kind::Upper;  break;
+                default:
+                    known = token[p] >= '0' && token[p] <= '9';
+                    pick.index = token[p] - '0';
+                    break;
+            }
+
+            for (++p; p < token.size() && token[p] != '+'; ++p)
+            {
+                const char c = token[p];
+                if (c == '\'')      ++pick.octave;
+                else if (c == ',')  --pick.octave;
+                else if (c == '!')  step.velocity = accentVelocity;
+                else if (c == '?')  step.velocity = ghostVelocity;
+            }
+
+            if (known && step.numPicks < Step::maxPicks)
+                step.picks[(size_t) step.numPicks++] = pick;
+
+            ++p;   // skip '+'
         }
+
+        if (step.isRest())
+            continue;   // nothing recognisable: ignore the token
 
         lastNote = (int) steps.size();
         steps.push_back (step);
@@ -250,11 +272,11 @@ std::vector<Step> buildPattern (Style style, int n)
     }
 
     if (style == Style::ChordTrigger)
-        return { Step { Step::Kind::Chord } };
+        return { Step::of ({ Pick::Kind::Chord }) };
 
     std::vector<Step> steps;
     for (int index : noteOrder (style, n))
-        steps.push_back (Step { Step::Kind::Note, index });
+        steps.push_back (Step::of ({ Pick::Kind::Note, index }));
     return steps;
 }
 

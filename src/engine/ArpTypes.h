@@ -51,10 +51,16 @@ enum class Style : int
     Ballad,
     Skank,
     GallopChords,
-    StutterChords
+    StutterChords,
+
+    // Chasse: Sytrus' "Chasse" rhythm (x x x . per beat) and variations
+    Chasse,
+    ChasseLift,
+    ChasseOffbeat,
+    ChasseDyads
 };
 
-constexpr int numStyles = 40;
+constexpr int numStyles = 44;
 
 enum class Groove : int { Straight, Swing8, Swing16 };
 enum class Retrigger : int { Off, Note, Beat };

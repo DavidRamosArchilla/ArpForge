@@ -1,6 +1,6 @@
 // Dev tool: loads a built VST3 the way a DAW does, feeds it a chord and
 // prints the MIDI it sends out.
-//   HostTest.exe <path-to-ArpForge.vst3>
+//   HostTest.exe <path-to-ArpForge.vst3> [Param=value ...]   e.g. Gate=25%
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_events/juce_events.h>
@@ -37,6 +37,23 @@ int main (int argc, char** argv)
     }
 
     std::printf ("acceptsMidi=%d producesMidi=%d\n", (int) plugin->acceptsMidi(), (int) plugin->producesMidi());
+    for (int i = 2; i < argc; ++i)
+    {
+        const juce::String arg (argv[i]);
+        const auto name = arg.upToFirstOccurrenceOf ("=", false, false);
+        const auto text = arg.fromFirstOccurrenceOf ("=", false, false);
+
+        for (auto* p : plugin->getParameters())
+        {
+            if (p->getName (64) == name)
+            {
+                p->setValueNotifyingHost (p->getValueForText (text));
+                std::printf ("set %s = %s\n", name.toRawUTF8(), p->getCurrentValueAsText().toRawUTF8());
+            }
+        }
+    }
+
+    plugin->setPlayConfigDetails (0, 2, 48000.0, 512);
     plugin->prepareToPlay (48000.0, 512);
 
     juce::AudioBuffer<float> audio (juce::jmax (2, plugin->getTotalNumOutputChannels()), 512);
